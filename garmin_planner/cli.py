@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from .downloader import GarminActivityDownloader
 from .gemini_client import GeminiWorkoutPlanner
+from .garmin_uploader import GarminWorkoutUploader
 
 
 @click.group(invoke_without_command=True)
@@ -288,6 +289,367 @@ def generate_plan(context_file, activities_dir, weeks, output_file, env_file, ve
         raise click.Abort()
     except Exception as e:
         click.echo(f"❌ Error generating workout plan: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command()
+@click.option(
+    '--weeks', '-w',
+    default=1,
+    help='Number of weeks to plan for (default: 1)'
+)
+@click.option(
+    '--context-file',
+    default='training_context.txt',
+    help='Path to training context file (default: training_context.txt)'
+)
+@click.option(
+    '--activities-dir',
+    default='garmin_activities',
+    help='Directory containing Garmin activities (default: garmin_activities)'
+)
+@click.option(
+    '--email', '-e',
+    help='Garmin Connect email (can also use GARMIN_EMAIL env var)'
+)
+@click.option(
+    '--password', '-p',
+    help='Garmin Connect password (can also use GARMIN_PASSWORD env var)'
+)
+@click.option(
+    '--env-file',
+    default='.env',
+    help='Path to .env file (default: .env)'
+)
+@click.option(
+    '--save-plan',
+    help='Save the generated plan to a file'
+)
+@click.option(
+    '--save-structured',
+    help='Save structured workouts to JSON file'
+)
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    help='Generate plan and parse workouts without uploading'
+)
+@click.option(
+    '--save-calendar',
+    help='Export workout schedule to calendar CSV file'
+)
+@click.option(
+    '--show-schedule',
+    is_flag=True,
+    help='Show detailed scheduling summary'
+)
+@click.option(
+    '--verbose', '-v',
+    is_flag=True,
+    help='Enable verbose output'
+)
+def plan_and_upload(weeks, context_file, activities_dir, email, password, env_file, 
+                   save_plan, save_structured, save_calendar, show_schedule, dry_run, verbose):
+    """
+    Generate AI workout plan and upload scheduled workouts to Garmin Connect.
+    
+    This command provides an integrated workflow:
+    1. Generate AI-powered workout plan using Google Gemini
+    2. Parse workouts with dates and times
+    3. Upload structured workouts to Garmin Connect
+    4. Schedule workouts in Garmin's calendar
+    
+    Requirements:
+    - GARMIN_EMAIL, GARMIN_PASSWORD, and GEMINI_API_KEY in environment variables or .env file
+    - Training context file (will create default if missing)
+    - Recent Garmin activities for AI analysis
+    
+    Example:
+        python -m garmin_planner.cli plan-and-upload --weeks 2 --verbose
+    """
+    
+    # Load environment variables
+    if Path(env_file).exists():
+        load_dotenv(env_file)
+        if verbose:
+            click.echo(f"Loaded environment from {env_file}")
+    
+    # Get credentials
+    garmin_email = email or os.getenv('GARMIN_EMAIL')
+    garmin_password = password or os.getenv('GARMIN_PASSWORD')
+    gemini_api_key = os.getenv('GEMINI_API_KEY')
+    
+    if not garmin_email or not garmin_password:
+        click.echo("❌ Error: Garmin credentials not provided!", err=True)
+        click.echo("\nPlease provide credentials via:")
+        click.echo("  1. Command line: --email EMAIL --password PASSWORD")
+        click.echo("  2. Environment variables: GARMIN_EMAIL, GARMIN_PASSWORD")
+        click.echo("  3. .env file with GARMIN_EMAIL and GARMIN_PASSWORD")
+        raise click.Abort()
+    
+    if not gemini_api_key:
+        click.echo("❌ Error: GEMINI_API_KEY not found!", err=True)
+        click.echo("\nPlease set GEMINI_API_KEY in:")
+        click.echo("  1. Environment variable: export GEMINI_API_KEY=your_key")
+        click.echo("  2. .env file: GEMINI_API_KEY=your_key")
+        raise click.Abort()
+    
+    if verbose:
+        click.echo(f"Planning weeks: {weeks}")
+        click.echo(f"Context file: {context_file}")
+        click.echo(f"Activities directory: {activities_dir}")
+        click.echo(f"Email: {garmin_email}")
+        click.echo(f"Dry run: {dry_run}")
+    
+    try:
+        # Step 1: Generate AI workout plan
+        click.echo("🤖 Step 1: Generating AI workout plan...")
+        
+        planner = GeminiWorkoutPlanner(api_key=gemini_api_key)
+        workout_plan = planner.generate_workout_plan(
+            context_file=context_file,
+            activities_dir=activities_dir,
+            weeks=weeks
+        )
+        
+        if workout_plan.startswith("❌"):
+            click.echo(f"Failed to generate plan: {workout_plan}", err=True)
+            raise click.Abort()
+        
+        # Save plan if requested
+        if save_plan:
+            plan_file = planner.save_workout_plan(workout_plan, save_plan)
+            click.echo(f"💾 Plan saved to: {plan_file}")
+        
+        # Step 2: Parse and structure workouts
+        click.echo("🔧 Step 2: Parsing workouts with scheduling information...")
+        
+        uploader = GarminWorkoutUploader(
+            email=garmin_email,
+            password=garmin_password
+        )
+        
+        workouts = uploader.parse_workout_plan(workout_plan)
+        
+        if not workouts:
+            click.echo("⚠️  No workouts found in the generated plan")
+            return
+        
+        click.echo(f"🏃 Found {len(workouts)} workouts with scheduling information")
+        
+        # Show workout preview
+        if verbose:
+            click.echo("\n📋 Workout schedule preview:")
+            for i, workout in enumerate(workouts, 1):
+                scheduled_info = ""
+                if workout.get('scheduledDate') and workout.get('scheduledTime'):
+                    scheduled_info = f" → {workout['scheduledDate']} at {workout['scheduledTime']}"
+                click.echo(f"  {i}. {workout['workoutName']}{scheduled_info}")
+        
+        # Save structured workouts if requested
+        if save_structured:
+            saved_file = uploader.save_structured_workouts(workouts, save_structured)
+            click.echo(f"💾 Structured workouts saved to: {saved_file}")
+        
+        # Create calendar export if requested
+        if save_calendar:
+            calendar_file = uploader.create_calendar_export(workouts, save_calendar)
+            if calendar_file:
+                click.echo(f"📅 Calendar export saved to: {calendar_file}")
+        
+        # Show scheduling summary if requested
+        if show_schedule or verbose:
+            schedule_summary = uploader.create_scheduling_summary(workouts)
+            click.echo(f"\n{schedule_summary}")
+        
+        if dry_run:
+            click.echo("\n🔍 Dry run complete - no workouts uploaded")
+            if not save_calendar and len(workouts) > 0:
+                click.echo("💡 Use --save-calendar to export schedule for your calendar app")
+            return
+        
+        # Step 3: Upload workouts
+        click.echo("🚀 Step 3: Uploading workouts to Garmin Connect...")
+        
+        uploaded_ids = []
+        errors = []
+        
+        for workout in workouts:
+            workout_id = uploader.upload_workout(workout)
+            if workout_id:
+                uploaded_ids.append(workout_id)
+            else:
+                errors.append(workout['workoutName'])
+        
+        # Create calendar export automatically if workouts were uploaded
+        if uploaded_ids and not save_calendar:
+            calendar_file = uploader.create_calendar_export(workouts, "workout_schedule")
+        
+        # Summary
+        click.echo(f"\n📊 Integration complete:")
+        click.echo(f"   Generated plan: ✅")
+        click.echo(f"   Uploaded workouts: {len(uploaded_ids)}/{len(workouts)}")
+        
+        if uploaded_ids:
+            click.echo(f"   Workout IDs: {', '.join(uploaded_ids)}")
+        
+        if errors:
+            click.echo(f"   Failed uploads: {', '.join(errors)}")
+        
+        if len(uploaded_ids) > 0:
+            click.echo(f"\n🎉 Successfully uploaded {len(uploaded_ids)} workouts!")
+            click.echo(f"📱 NEXT STEPS:")
+            click.echo(f"   1. Open Garmin Connect app/website")
+            click.echo(f"   2. Go to Training → Workouts")
+            click.echo(f"   3. Find your workouts (they include date/time in the name)")
+            click.echo(f"   4. Tap 'Schedule' to add them to your calendar")
+            click.echo(f"   5. Or import workout_schedule.csv into your calendar app")
+            
+            if not show_schedule:
+                click.echo(f"\n💡 Use --show-schedule to see detailed scheduling information")
+        else:
+            click.echo("❌ No workouts were uploaded successfully", err=True)
+            
+    except KeyboardInterrupt:
+        click.echo("\n⏹️  Process interrupted by user")
+        raise click.Abort()
+    except Exception as e:
+        click.echo(f"❌ Error in integrated workflow: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        raise click.Abort()
+
+
+@cli.command()
+@click.argument('plan_file')
+@click.option(
+    '--email', '-e',
+    help='Garmin Connect email (can also use GARMIN_EMAIL env var)'
+)
+@click.option(
+    '--password', '-p',
+    help='Garmin Connect password (can also use GARMIN_PASSWORD env var)'
+)
+@click.option(
+    '--env-file',
+    default='.env',
+    help='Path to .env file (default: .env)'
+)
+@click.option(
+    '--save-structured',
+    help='Save structured workouts to JSON file before uploading'
+)
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    help='Parse and structure workouts without uploading'
+)
+@click.option(
+    '--verbose', '-v',
+    is_flag=True,
+    help='Enable verbose output'
+)
+def upload_workouts(plan_file, email, password, env_file, save_structured, dry_run, verbose):
+    """
+    Upload structured workouts to Garmin Connect from a workout plan.
+    
+    This command parses a Gemini-generated workout plan and uploads
+    the structured workouts to your Garmin Connect account.
+    
+    Requirements:
+    - GARMIN_EMAIL and GARMIN_PASSWORD in environment variables or .env file
+    - A workout plan file generated by the generate-plan command
+    
+    Example:
+        python -m garmin_planner.cli upload-workouts workout_plan_20250803_1836.md
+    """
+    
+    # Load environment variables
+    if Path(env_file).exists():
+        load_dotenv(env_file)
+        if verbose:
+            click.echo(f"Loaded environment from {env_file}")
+    
+    # Get credentials
+    garmin_email = email or os.getenv('GARMIN_EMAIL')
+    garmin_password = password or os.getenv('GARMIN_PASSWORD')
+    
+    if not garmin_email or not garmin_password:
+        click.echo("❌ Error: Garmin credentials not provided!", err=True)
+        click.echo("\nPlease provide credentials via:")
+        click.echo("  1. Command line: --email EMAIL --password PASSWORD")
+        click.echo("  2. Environment variables: GARMIN_EMAIL, GARMIN_PASSWORD")
+        click.echo("  3. .env file with GARMIN_EMAIL and GARMIN_PASSWORD")
+        raise click.Abort()
+    
+    # Check if plan file exists
+    if not Path(plan_file).exists():
+        click.echo(f"❌ Plan file {plan_file} not found!", err=True)
+        raise click.Abort()
+    
+    if verbose:
+        click.echo(f"Plan file: {plan_file}")
+        click.echo(f"Email: {garmin_email}")
+        click.echo(f"Dry run: {dry_run}")
+        if save_structured:
+            click.echo(f"Save structured to: {save_structured}")
+    
+    try:
+        # Initialize uploader
+        uploader = GarminWorkoutUploader(
+            email=garmin_email,
+            password=garmin_password
+        )
+        
+        # Parse workouts from plan
+        with open(plan_file, 'r', encoding='utf-8') as f:
+            plan_text = f.read()
+        
+        workouts = uploader.parse_workout_plan(plan_text)
+        
+        if not workouts:
+            click.echo("⚠️  No workouts found in the plan file")
+            return
+        
+        click.echo(f"🏃 Found {len(workouts)} workouts in the plan")
+        
+        # Save structured workouts if requested
+        if save_structured:
+            saved_file = uploader.save_structured_workouts(workouts, save_structured)
+            click.echo(f"💾 Structured workouts saved to: {saved_file}")
+        
+        # Show workout preview
+        if verbose:
+            click.echo("\n📋 Workout preview:")
+            for i, workout in enumerate(workouts, 1):
+                click.echo(f"  {i}. {workout['workoutName']} ({workout['estimatedDurationInSecs']//60} min)")
+        
+        if dry_run:
+            click.echo("\n🔍 Dry run complete - no workouts uploaded")
+            return
+        
+        # Upload workouts
+        result = uploader.upload_workouts_from_plan(plan_file)
+        
+        if result['success']:
+            click.echo(f"\n🎉 Successfully uploaded {result['uploaded']}/{result['total']} workouts!")
+            if result['workout_ids']:
+                click.echo(f"📋 Workout IDs: {', '.join(result['workout_ids'])}")
+        else:
+            click.echo("❌ No workouts were uploaded successfully", err=True)
+        
+        if result['errors']:
+            click.echo(f"⚠️  Failed uploads: {', '.join(result['errors'])}")
+            
+    except KeyboardInterrupt:
+        click.echo("\n⏹️  Upload interrupted by user")
+        raise click.Abort()
+    except Exception as e:
+        click.echo(f"❌ Error uploading workouts: {e}", err=True)
         if verbose:
             import traceback
             traceback.print_exc()

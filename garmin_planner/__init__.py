@@ -7,5 +7,6 @@ __author__ = "Janos Velenyak"
 
 from .downloader import GarminActivityDownloader
 from .gemini_client import GeminiWorkoutPlanner
+from .garmin_uploader import GarminWorkoutUploader
 
-__all__ = ["GarminActivityDownloader", "GeminiWorkoutPlanner"]
+__all__ = ["GarminActivityDownloader", "GeminiWorkoutPlanner", "GarminWorkoutUploader"]

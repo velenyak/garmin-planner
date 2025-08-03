@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format clean run download list plan help
+.PHONY: install dev test lint format clean run download list plan upload plan-upload help
 
 # Install dependencies
 install:
@@ -38,6 +38,25 @@ plan-weeks:
 	@read -p "Enter number of weeks to plan: " weeks; \
 	pipenv run python -m garmin_planner.cli generate-plan --weeks $$weeks
 
+# Integrated: Generate plan and upload scheduled workouts
+plan-upload:
+	pipenv run python -m garmin_planner.cli plan-and-upload --verbose
+
+# Integrated: Generate plan and upload for specific weeks
+plan-upload-weeks:
+	@read -p "Enter number of weeks to plan: " weeks; \
+	pipenv run python -m garmin_planner.cli plan-and-upload --weeks $$weeks --verbose
+
+# Upload workouts to Garmin Connect
+upload:
+	@read -p "Enter workout plan file: " plan_file; \
+	pipenv run python -m garmin_planner.cli upload-workouts "$$plan_file"
+
+# Upload workouts with dry run (preview only)
+upload-preview:
+	@read -p "Enter workout plan file: " plan_file; \
+	pipenv run python -m garmin_planner.cli upload-workouts "$$plan_file" --dry-run --verbose
+
 # Run tests
 test:
 	pipenv run pytest
@@ -70,6 +89,10 @@ help:
 	@echo "  list         - List downloaded activities"
 	@echo "  plan         - Generate workout plan using Gemini AI"
 	@echo "  plan-weeks   - Generate workout plan for specific weeks"
+	@echo "  plan-upload  - 🚀 Generate plan and upload scheduled workouts"
+	@echo "  plan-upload-weeks - 🚀 Generate and upload for specific weeks"
+	@echo "  upload       - Upload workouts to Garmin Connect"
+	@echo "  upload-preview - Preview workout upload (dry run)"
 	@echo "  test         - Run tests"
 	@echo "  lint         - Lint code"
 	@echo "  format       - Format code"

@@ -167,6 +167,9 @@ Calories: {activity.get('calories', 'N/A')}
         recent_activities = self.load_recent_activities(activities_dir)
         formatted_activities = self.format_activities_for_prompt(recent_activities)
         
+        # Calculate start date (tomorrow)
+        start_date = datetime.now() + timedelta(days=1)
+        
         # Create the prompt
         prompt = f"""
 You are an expert fitness coach and workout planner. Based on the training context and recent activities provided below, create a detailed workout plan for the next {weeks} week(s).
@@ -180,11 +183,22 @@ RECENT ACTIVITIES (last 2-3 weeks):
 Please create a comprehensive workout plan that includes:
 
 1. **Weekly Overview**: Brief summary of the training focus for each week
-2. **Daily Workouts**: Detailed day-by-day plan including:
-   - Activity type (running, cycling, swimming, strength training, yoga, rest)
-   - Duration and intensity
-   - Specific workout details (intervals, zones, exercises)
-   - Recovery recommendations
+
+2. **Daily Workouts**: Detailed day-by-day plan with EXACT formatting as shown below:
+
+For each day, use this EXACT format:
+**Monday, August 5th:**
+* **Morning (07:00):** [Activity Type] ([Duration] minutes, [Intensity/Zone]). [Detailed description with specific intervals, sets, reps, or zones]
+* **Evening (18:00):** [Activity Type] ([Duration] minutes). [Detailed description]
+* **Recovery:** [Recovery activities]
+
+IMPORTANT FORMATTING RULES:
+- Use day names with dates starting from {start_date.strftime('%A, %B %d')}
+- Always include specific times in 24-hour format: "Morning (07:00)", "Evening (18:00)", "Afternoon (12:00)"
+- Always include duration in minutes: "Running (75 minutes, Zone 2)"
+- For intervals, specify clearly: "4 x 5-minute intervals at Zone 4"
+- For strength training, include sets and reps: "3 sets of 8-12 reps"
+- Use consistent activity names: Running, Cycling, Swimming, Open Water Swim, Pool Swim, Indoor Cycling, Strength Training, Yoga
 
 3. **Training Principles**: 
    - Consider the athlete's recent training load and patterns
@@ -197,10 +211,19 @@ Please create a comprehensive workout plan that includes:
    - Injury prevention tips
    - Nutrition or recovery suggestions
 
-Format the response in a clear, structured way that's easy to follow. Use markdown formatting for better readability.
+Format the response in clear, structured Markdown that can be easily parsed for workout upload and scheduling to Garmin Connect.
 
 Current date: {datetime.now().strftime('%Y-%m-%d')}
-Plan start date: {(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')}
+Plan start date: {start_date.strftime('%Y-%m-%d')}
+
+EXAMPLE FORMAT:
+**Monday, August 5th:**
+* **Morning (07:00):** Running (60 minutes, Zone 2). Easy base run focusing on aerobic development.
+* **Evening (18:00):** Strength Training (45 minutes). Full body workout: 3 sets of squats, deadlifts, push-ups.
+
+**Tuesday, August 6th:**
+* **Morning (06:30):** Swimming (45 minutes, Zone 2-3). Pool swim with technique focus.
+* **Recovery:** Light stretching and hydration.
 """
 
         try:

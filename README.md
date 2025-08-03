@@ -9,6 +9,8 @@ A Python tool to download and save Garmin Connect activities as JSON files and g
 - Generate summary file with all activities
 - **🤖 AI-powered workout plan generation using Google Gemini**
 - **📝 Customizable training context and goals**
+- **🚀 Structured workout upload to Garmin Connect**
+- **📅 Automatic workout naming with date and discipline**
 - Command-line interface with multiple options
 - Secure credential management via environment variables
 - Resume existing Garmin sessions automatically
@@ -110,16 +112,35 @@ python -m garmin_planner.cli generate-plan \
 make plan-weeks
 ```
 
+#### 🚀 Structured Workout Upload
+
+```bash
+# Upload workouts to Garmin Connect
+make upload
+
+# Preview workouts without uploading (dry run)
+make upload-preview
+
+# Upload specific plan file
+python -m garmin_planner.cli upload-workouts my_plan.md
+
+# Upload with structured JSON export
+python -m garmin_planner.cli upload-workouts my_plan.md \
+  --save-structured structured_workouts.json \
+  --verbose
+```
+
 #### All CLI options
 ```bash
 python -m garmin_planner.cli --help
 python -m garmin_planner.cli generate-plan --help
+python -m garmin_planner.cli upload-workouts --help
 ```
 
 ### Programmatic Usage
 
 ```python
-from garmin_planner import GarminActivityDownloader, GeminiWorkoutPlanner
+from garmin_planner import GarminActivityDownloader, GeminiWorkoutPlanner, GarminWorkoutUploader
 import os
 
 # Download activities
@@ -143,6 +164,15 @@ workout_plan = planner.generate_workout_plan(
 
 saved_file = planner.save_workout_plan(workout_plan, "my_plan.md")
 print(f"Plan saved to: {saved_file}")
+
+# Upload workouts to Garmin Connect
+uploader = GarminWorkoutUploader(
+    email=os.getenv('GARMIN_EMAIL'),
+    password=os.getenv('GARMIN_PASSWORD')
+)
+
+upload_result = uploader.upload_workouts_from_plan("my_plan.md")
+print(f"Uploaded {upload_result['uploaded']}/{upload_result['total']} workouts")
 ```
 
 ## Training Context
@@ -250,6 +280,16 @@ Workout plans are saved as Markdown files with:
 - **Training Principles**: Progression and periodization
 - **Key Recommendations**: Focus areas and tips
 
+### 🚀 Structured Workouts for Garmin Connect
+
+Generated workouts are automatically structured for Garmin Connect upload with:
+
+- **Proper naming**: `YYYY-MM-DD [Sport] [Type]` (e.g., "2025-08-05 Cycling intervals")
+- **Sport-specific segments**: Warm-up, main work, cool-down
+- **Heart rate zones**: Automatic zone targeting based on workout type
+- **Interval structure**: Proper work/recovery intervals for interval workouts
+- **Duration-based**: Time-based workout segments
+
 ## Make Commands
 
 ```bash
@@ -261,6 +301,8 @@ make download-weeks # Download activities for specific weeks (interactive)
 make list           # List downloaded activities
 make plan           # Generate AI workout plan
 make plan-weeks     # Generate plan for specific weeks (interactive)
+make upload         # Upload workouts to Garmin Connect
+make upload-preview # Preview workout upload (dry run)
 make test           # Run tests
 make lint           # Lint code
 make format         # Format code with black
@@ -276,7 +318,8 @@ garmin-workout-planner/
 │   ├── cli.py              # Command-line interface
 │   ├── config.py           # Configuration management
 │   ├── downloader.py       # Core download functionality
-│   └── gemini_client.py    # Google Gemini AI integration
+│   ├── gemini_client.py    # Google Gemini AI integration
+│   └── garmin_uploader.py  # Garmin Connect workout upload
 ├── tests/                   # Test files
 ├── training_context.txt     # Your training goals and context
 ├── .env                    # Environment variables (create this)
@@ -303,6 +346,7 @@ Uses the official Google Generative AI library. Requires a valid API key from Go
 - Network issues are handled gracefully with retries
 - Individual activity download failures won't stop the entire process
 - AI generation errors are caught and reported clearly
+- Workout upload failures are logged with specific error details
 - Verbose mode shows detailed error information
 
 ## Security Notes
