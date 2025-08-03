@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format clean run download list help
+.PHONY: install dev test lint format clean run download list plan help
 
 # Install dependencies
 install:
@@ -28,6 +28,15 @@ download-weeks:
 # List downloaded activities
 list:
 	pipenv run python -m garmin_planner.cli list-activities
+
+# Generate workout plan using Gemini AI
+plan:
+	pipenv run python -m garmin_planner.cli generate-plan
+
+# Generate workout plan for specific weeks
+plan-weeks:
+	@read -p "Enter number of weeks to plan: " weeks; \
+	pipenv run python -m garmin_planner.cli generate-plan --weeks $$weeks
 
 # Run tests
 test:
@@ -59,6 +68,8 @@ help:
 	@echo "  download     - Download last 2 weeks of activities"
 	@echo "  download-weeks - Download activities for specific weeks"
 	@echo "  list         - List downloaded activities"
+	@echo "  plan         - Generate workout plan using Gemini AI"
+	@echo "  plan-weeks   - Generate workout plan for specific weeks"
 	@echo "  test         - Run tests"
 	@echo "  lint         - Lint code"
 	@echo "  format       - Format code"

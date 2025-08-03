@@ -11,6 +11,7 @@ setup(
         "garth>=0.4.0",
         "python-dotenv>=1.0.0",
         "click>=8.0.0",
+        "google-generativeai>=0.3.0",
     ],
     entry_points={
         "console_scripts": [

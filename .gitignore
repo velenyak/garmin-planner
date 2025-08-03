@@ -50,6 +50,13 @@ Thumbs.db
 
 # Project specific
 garmin_activities*/
+*.json
+!example*.json
+training_context.txt
+
+# Generated workout plans
+workout_plan_*.md
+*_plan.md
 
 # Testing
 .pytest_cache/
